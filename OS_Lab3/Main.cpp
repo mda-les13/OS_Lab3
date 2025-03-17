@@ -7,12 +7,15 @@
 #include <chrono>
 #include <stdexcept>
 
-class MarkerThread {
+class MarkerThread
+{
 public:
-    MarkerThread(int id, std::vector<int>& array, std::mutex& mtx, std::condition_variable& cvStart, std::condition_variable& cvContinue,
-        std::atomic<bool>& startSignal, std::atomic<bool>& continueSignal, std::atomic<bool>& terminateSignal)
+    MarkerThread(int id, std::vector<int>& array, std::mutex& mtx, std::condition_variable& cvStart,
+        std::vector<std::condition_variable>& cvContinue, std::vector<bool>& continueSignal,
+        std::vector<bool>& terminateSignal, std::atomic<bool>& startSignal)
         : id_(id), array_(array), mtx_(mtx), cvStart_(cvStart), cvContinue_(cvContinue),
-        startSignal_(startSignal), continueSignal_(continueSignal), terminateSignal_(terminateSignal) {
+        continueSignal_(continueSignal), terminateSignal_(terminateSignal), startSignal_(startSignal)
+    {
     }
 
     void operator()()
@@ -25,10 +28,11 @@ public:
             srand(id_);
 
             int markedCount = 0;
-            while (!terminateSignal_.load())
+            while (!terminateSignal_[id_ - 1])
             {
                 int randomIndex = rand() % array_.size();
-                if (array_[randomIndex] == 0) {
+                if (array_[randomIndex] == 0)
+                {
                     std::this_thread::sleep_for(std::chrono::milliseconds(5));
                     array_[randomIndex] = id_;
                     std::this_thread::sleep_for(std::chrono::milliseconds(5));
@@ -37,10 +41,11 @@ public:
                 else
                 {
                     std::cout << "Thread " << id_ << ": marked " << markedCount << " elements, cannot mark index " << randomIndex << std::endl;
-                    continueSignal_.store(false);
-                    cvContinue_.notify_one();
-                    cvContinue_.wait(lock, [this] { return continueSignal_.load() || terminateSignal_.load(); });
-                    if (terminateSignal_.load())
+                    continueSignal_[id_ - 1] = false;
+                    cvContinue_[id_ - 1].notify_one();
+
+                    cvContinue_[id_ - 1].wait(lock, [this] { return continueSignal_[id_ - 1] || terminateSignal_[id_ - 1]; });
+                    if (terminateSignal_[id_ - 1])
                     {
                         break;
                     }
@@ -54,6 +59,9 @@ public:
                     array_[i] = 0;
                 }
             }
+
+            terminateSignal_[id_ - 1] = true;
+            cvContinue_[id_ - 1].notify_one();
         }
         catch (const std::exception& e)
         {
@@ -66,10 +74,10 @@ private:
     std::vector<int>& array_;
     std::mutex& mtx_;
     std::condition_variable& cvStart_;
-    std::condition_variable& cvContinue_;
+    std::vector<std::condition_variable>& cvContinue_;
+    std::vector<bool>& continueSignal_;
+    std::vector<bool>& terminateSignal_;
     std::atomic<bool>& startSignal_;
-    std::atomic<bool>& continueSignal_;
-    std::atomic<bool>& terminateSignal_;
 };
 
 void printArray(const std::vector<int>& array)
@@ -107,14 +115,14 @@ int main()
         std::vector<std::thread> threads;
         std::mutex mtx;
         std::condition_variable cvStart;
-        std::condition_variable cvContinue;
+        std::vector<std::condition_variable> cvContinue(numThreads);
+        std::vector<bool> continueSignal(numThreads, true);
+        std::vector<bool> terminateSignal(numThreads, false);
         std::atomic<bool> startSignal(false);
-        std::atomic<bool> continueSignal(true);
-        std::atomic<bool> terminateSignal(false);
 
         for (int i = 0; i < numThreads; ++i)
         {
-            threads.emplace_back(MarkerThread(i + 1, array, mtx, cvStart, cvContinue, startSignal, continueSignal, terminateSignal));
+            threads.emplace_back(MarkerThread(i + 1, array, mtx, cvStart, cvContinue, continueSignal, terminateSignal, startSignal));
         }
 
         {
@@ -126,9 +134,10 @@ int main()
         bool allTerminated = false;
         while (!allTerminated)
         {
+            for (int i = 0; i < numThreads; ++i)
             {
                 std::unique_lock<std::mutex> lock(mtx);
-                cvContinue.wait(lock, [&continueSignal] { return !continueSignal.load(); });
+                cvContinue[i].wait(lock, [&continueSignal, i] { return !continueSignal[i]; });
             }
 
             printArray(array);
@@ -143,9 +152,19 @@ int main()
                 continue;
             }
 
-            terminateSignal.store(true);
-            cvContinue.notify_one();
+            if (terminateSignal[threadToTerminate - 1])
+            {
+                std::cerr << "Thread " << threadToTerminate << " has already terminated." << std::endl;
+                continue;
+            }
 
+            terminateSignal[threadToTerminate - 1] = true;
+            cvContinue[threadToTerminate - 1].notify_one();
+
+            {
+                std::unique_lock<std::mutex> lock(mtx);
+                cvContinue[threadToTerminate - 1].wait(lock, [&terminateSignal, threadToTerminate] { return terminateSignal[threadToTerminate - 1]; });
+            }
             threads[threadToTerminate - 1].join();
 
             printArray(array);
@@ -162,9 +181,14 @@ int main()
 
             if (!allTerminated)
             {
-                terminateSignal.store(false);
-                continueSignal.store(true);
-                cvContinue.notify_all();
+                for (int i = 0; i < numThreads; ++i)
+                {
+                    if (!terminateSignal[i])
+                    {
+                        continueSignal[i] = true;
+                        cvContinue[i].notify_one();
+                    }
+                }
             }
         }
     }
