@@ -1,12 +1,12 @@
-#include <gtest/gtest.h>
+#define BOOST_TEST_MODULE MarkerThreadTest
+#include <boost/test/unit_test.hpp>
 #include <thread>
 #include <chrono>
-#include <atomic>
 #include "marker_thread.h"
 
-class MarkerThreadTestFixture : public ::testing::Test {
-protected:
-    void SetUp() override {
+class MarkerThreadTestFixture {
+public:
+    MarkerThreadTestFixture() {
         arraySize = 10;
         array.resize(arraySize, 0);
         mtx = std::make_shared<std::mutex>();
@@ -16,16 +16,15 @@ protected:
         terminateSignal = std::make_shared<std::vector<bool>>(1, false);
         startSignal = std::make_shared<std::atomic<bool>>(false);
         
-        // Сохраняем оригинальную длительность пауз
         originalSleepDuration = MarkerThread::sleepDuration;
-        // Уменьшаем длительность пауз для тестирования
         MarkerThread::sleepDuration = std::chrono::milliseconds(1);
     }
 
-    void TearDown() override {
-        // Восстанавливаем оригинальную длительность пауз
+    ~MarkerThreadTestFixture() {
         MarkerThread::sleepDuration = originalSleepDuration;
     }
+
+    static std::chrono::milliseconds originalSleepDuration;
 
     int arraySize;
     std::vector<int> array;
@@ -35,27 +34,49 @@ protected:
     std::shared_ptr<std::vector<bool>> continueSignal;
     std::shared_ptr<std::vector<bool>> terminateSignal;
     std::shared_ptr<std::atomic<bool>> startSignal;
-    static std::chrono::milliseconds originalSleepDuration;
 };
 
 std::chrono::milliseconds MarkerThreadTestFixture::originalSleepDuration;
 
-TEST_F(MarkerThreadTestFixture, ThreadMarksElementsCorrectly) {
+BOOST_FIXTURE_TEST_CASE(ThreadStartsAfterSignal, MarkerThreadTestFixture) {
     MarkerThread thread(1, array, *mtx, *cvStart, *cvContinue, *continueSignal, *terminateSignal, *startSignal);
     
-    std::thread t([&](){ thread(); });
+    std::atomic<bool> threadStarted(false);
+    std::thread t([&](){
+        threadStarted = true;
+        thread();
+    });
     
-    // Отправляем сигнал старт
+    BOOST_CHECK(!threadStarted.load());
+    
     {
         std::lock_guard<std::mutex> lock(*mtx);
         *startSignal = true;
         cvStart->notify_all();
     }
     
-    // Даем время потоку поработать
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    BOOST_CHECK(threadStarted.load());
+    
+    (*terminateSignal)[0] = true;
+    (*continueSignal)[0] = true;
+    cvContinue->at(0).notify_one();
+    t.join();
+}
+
+BOOST_FIXTURE_TEST_CASE(ThreadMarksElementsCorrectly, MarkerThreadTestFixture) {
+    MarkerThread thread(1, array, *mtx, *cvStart, *cvContinue, *continueSignal, *terminateSignal, *startSignal);
+    
+    std::thread t([&](){ thread(); });
+    
+    {
+        std::lock_guard<std::mutex> lock(*mtx);
+        *startSignal = true;
+        cvStart->notify_all();
+    }
+    
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     
-    // Проверяем, что поток пометил элементы массива своим ID
     bool foundMark = false;
     for (int val : array) {
         if (val == 1) {
@@ -63,73 +84,62 @@ TEST_F(MarkerThreadTestFixture, ThreadMarksElementsCorrectly) {
             break;
         }
     }
-    EXPECT_TRUE(foundMark);
+    BOOST_CHECK(foundMark);
     
-    // Очищаем
     (*terminateSignal)[0] = true;
     (*continueSignal)[0] = true;
     cvContinue->at(0).notify_one();
     t.join();
 }
 
-TEST_F(MarkerThreadTestFixture, ThreadClearsMarksOnTermination) {
+BOOST_FIXTURE_TEST_CASE(ThreadClearsMarksOnTermination, MarkerThreadTestFixture) {
     MarkerThread thread(1, array, *mtx, *cvStart, *cvContinue, *continueSignal, *terminateSignal, *startSignal);
     
     std::thread t([&](){ thread(); });
     
-    // Отправляем сигнал старт
     {
         std::lock_guard<std::mutex> lock(*mtx);
         *startSignal = true;
         cvStart->notify_all();
     }
     
-    // Даем время потоку поработать
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     
-    // Завершаем поток
     (*terminateSignal)[0] = true;
     (*continueSignal)[0] = true;
     cvContinue->at(0).notify_one();
     t.join();
     
-    // Проверяем, что все метки потока удалены
     for (int val : array) {
-        EXPECT_EQ(val, 0);
+        BOOST_CHECK_EQUAL(val, 0);
     }
 }
 
-TEST_F(MarkerThreadTestFixture, ThreadDoesNotOverwriteOtherMarks) {
-    // Устанавливаем начальное значение в массиве
+BOOST_FIXTURE_TEST_CASE(ThreadDoesNotOverwriteOtherMarks, MarkerThreadTestFixture) {
     array[0] = 2;
     
     MarkerThread thread(1, array, *mtx, *cvStart, *cvContinue, *continueSignal, *terminateSignal, *startSignal);
-    // Устанавливаем фиксированный индекс для тестирования
     thread.setFixedIndex(0); 
     
     std::thread t([&](){ thread(); });
     
-    // Отправляем сигнал старт
     {
         std::lock_guard<std::mutex> lock(*mtx);
         *startSignal = true;
         cvStart->notify_all();
     }
     
-    // Даем время потоку попытаться изменить элемент
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     
-    // Проверяем, что элемент не был перезаписан
-    EXPECT_EQ(array[0], 2);
+    BOOST_CHECK_EQUAL(array[0], 2);
     
-    // Очищаем
     (*terminateSignal)[0] = true;
     (*continueSignal)[0] = true;
     cvContinue->at(0).notify_one();
     t.join();
 }
 
-TEST_F(MarkerThreadTestFixture, MultipleThreadsWorkCorrectly) {
+BOOST_FIXTURE_TEST_CASE(MultipleThreadsWorkCorrectly, MarkerThreadTestFixture) {
     const int numThreads = 3;
     std::vector<std::shared_ptr<std::vector<bool>>> continueSignals(numThreads);
     std::vector<std::shared_ptr<std::vector<bool>>> terminateSignals(numThreads);
@@ -149,22 +159,18 @@ TEST_F(MarkerThreadTestFixture, MultipleThreadsWorkCorrectly) {
                       *continueSignals[i], *terminateSignals[i], *startSignal));
     }
     
-    // Отправляем сигнал старт
     {
         std::lock_guard<std::mutex> lock(*mtx);
         *startSignal = true;
         cvStart->notify_all();
     }
     
-    // Даем время потокам поработать
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     
-    // Проверяем, что все элементы массива либо нули, либо имеют значения от 1 до numThreads
     for (int val : array) {
-        EXPECT_TRUE(val >= 0 && val <= numThreads);
+        BOOST_CHECK(val >= 0 && val <= numThreads);
     }
     
-    // Завершаем все потоки
     for (int i = 0; i < numThreads; ++i) {
         (*terminateSignals[i])[i] = true;
         (*continueSignals[i])[i] = true;

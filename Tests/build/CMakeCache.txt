@@ -17,6 +17,18 @@
 //Builds the googlemock subproject
 BUILD_GMOCK:BOOL=ON
 
+//The directory containing a CMake configuration file for Boost.
+Boost_DIR:PATH=Boost_DIR-NOTFOUND
+
+//Path to a file.
+Boost_INCLUDE_DIR:PATH=Boost_INCLUDE_DIR-NOTFOUND
+
+//Boost unit_test_framework library (debug)
+Boost_UNIT_TEST_FRAMEWORK_LIBRARY_DEBUG:FILEPATH=Boost_UNIT_TEST_FRAMEWORK_LIBRARY_DEBUG-NOTFOUND
+
+//Boost unit_test_framework library (release)
+Boost_UNIT_TEST_FRAMEWORK_LIBRARY_RELEASE:FILEPATH=Boost_UNIT_TEST_FRAMEWORK_LIBRARY_RELEASE-NOTFOUND
+
 //Path to a program.
 CMAKE_AR:FILEPATH=C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.43.34808/bin/Hostx64/x64/lib.exe
 
@@ -289,6 +301,15 @@ Lab3_IS_TOP_LEVEL:STATIC=ON
 Lab3_SOURCE_DIR:STATIC=C:/Users/Ivan/Documents/GitHub/OS_Lab3/Tests/src
 
 //Value Computed by CMake
+MarkerThreadTest_BINARY_DIR:STATIC=C:/Users/Ivan/Documents/GitHub/OS_Lab3/Tests/build/Test
+
+//Value Computed by CMake
+MarkerThreadTest_IS_TOP_LEVEL:STATIC=OFF
+
+//Value Computed by CMake
+MarkerThreadTest_SOURCE_DIR:STATIC=C:/Users/Ivan/Documents/GitHub/OS_Lab3/Tests/src/Test
+
+//Value Computed by CMake
 Server_Test_BINARY_DIR:STATIC=C:/Users/Ivan/Documents/GitHub/OS_Lab3/Tests/build/Test
 
 //Value Computed by CMake
@@ -348,6 +369,12 @@ gtest_hide_internal_symbols:BOOL=OFF
 # INTERNAL cache entries
 ########################
 
+//ADVANCED property for variable: Boost_DIR
+Boost_DIR-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: Boost_UNIT_TEST_FRAMEWORK_LIBRARY_DEBUG
+Boost_UNIT_TEST_FRAMEWORK_LIBRARY_DEBUG-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: Boost_UNIT_TEST_FRAMEWORK_LIBRARY_RELEASE
+Boost_UNIT_TEST_FRAMEWORK_LIBRARY_RELEASE-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_AR
 CMAKE_AR-ADVANCED:INTERNAL=1
 //This is the directory where this CMakeCache.txt was created
@@ -466,7 +493,7 @@ CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_MT
 CMAKE_MT-ADVANCED:INTERNAL=1
 //number of local generators
-CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=5
+CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=2
 //Platform information initialized
 CMAKE_PLATFORM_INFO_INITIALIZED:INTERNAL=1
 //noop for ranlib

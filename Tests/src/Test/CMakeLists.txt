@@ -1,29 +1,27 @@
 cmake_minimum_required(VERSION 3.14)
-project(Server_Test)
+project(MarkerThreadTest)
 
-include(FetchContent)
-	FetchContent_Declare(
-		googletest
-		# Specify the commit you depend on and update it regularly.
-		URL https://github.com/google/googletest/archive/refs/heads/master.zip
-		DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-	)
-	# For Windows: Prevent overriding the parent project's compiler/linker settings
-	set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-	FetchContent_MakeAvailable(googletest)
+# Найти установленную библиотеку Boost
+find_package(Boost REQUIRED COMPONENTS unit_test_framework)
 
-# link against gtest or gtest_main as needed. Eg
+# Включить Boost в проект
+include_directories(${Boost_INCLUDE_DIRS})
+
+# Добавить тестовый исполняемый файл
 add_executable(${PROJECT_NAME} tests.cpp)
+
+# Связать с Boost.Test
 target_link_libraries(${PROJECT_NAME}
-	gtest_main
+    Boost::unit_test_framework
 )
 
-add_test(NAME tests COMMAND ${PROJECT_NAME})
+# Добавить тест в CTest
+add_test(NAME ${PROJECT_NAME} COMMAND ${PROJECT_NAME})
 
-# post build command
+# Команда для запуска тестов после сборки
 add_custom_command(
-     TARGET ${PROJECT_NAME}  
-     COMMENT "Run tests"
-     POST_BUILD 
-     COMMAND ${PROJECT_NAME}
+    TARGET ${PROJECT_NAME}
+    COMMENT "Running tests..."
+    POST_BUILD
+    COMMAND ${PROJECT_NAME}
 )
